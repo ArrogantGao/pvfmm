@@ -30,7 +30,7 @@ The bindings try to load `libpvfmm` from:
 using PVFMM
 using Random
 
-# Path to directory containing libpvfmm.dylib / libpvfmm.so
+# Path to a PVFMM library file, build dir, or install prefix
 ENV["PVFMM"] = "build"
 
 Random.seed!(1)

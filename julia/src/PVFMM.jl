@@ -15,6 +15,10 @@ export get_leaf_coordinates
 export get_coefficients
 export get_values
 
+# temporary, will be changed after PVFMM_jll is registered
+const _PVFMM_BUILD_DIR = normpath(joinpath(@__DIR__, "..", "..", "build"))
+const _PVFMM_LIB = joinpath(_PVFMM_BUILD_DIR, "libpvfmm.$(Libdl.dlext)")
+
 @enum FMMKernel begin
     LaplacePotential = 0
     LaplaceGradient = 1
@@ -34,32 +38,29 @@ const KERNEL_DIMS = Dict(
 )
 
 const _LIB_HANDLE = Ref{Ptr{Cvoid}}(C_NULL)
-
-function _resolve_library_path()
-    if haskey(ENV, "PVFMM")
-        root = ENV["PVFMM"]
-        if isfile(root)
-            return root
-        end
-        for candidate in ("libpvfmm.so", "libpvfmm.dylib", "libpvfmm.dll")
-            path = joinpath(root, candidate)
-            if isfile(path)
-                return path
-            end
-        end
-        throw(ArgumentError("PVFMM was set but no PVFMM library was found in $root"))
-    end
-
-    found = Libdl.find_library(["pvfmm"])
-    found == "" && throw(ArgumentError("Failed to find libpvfmm. Set ENV[\"PVFMM\"] to the install/build path."))
-    return found
-end
+const _ALLOW_REVISE_ENV = "PVFMM_ALLOW_REVISE"
 
 function _libpvfmm()
     if _LIB_HANDLE[] == C_NULL
-        _LIB_HANDLE[] = Libdl.dlopen(_resolve_library_path())
+        _LIB_HANDLE[] = Libdl.dlopen(_PVFMM_LIB)
     end
     return _LIB_HANDLE[]
+end
+
+function _revise_loaded()
+    any(mod -> nameof(mod) == :Revise, values(Base.loaded_modules))
+end
+
+function _assert_revise_compatibility()
+    get(ENV, _ALLOW_REVISE_ENV, "0") == "1" && return nothing
+    if _revise_loaded()
+        throw(ArgumentError(
+            "PVFMM is incompatible with Revise in this runtime. " *
+            "Start Julia with --startup-file=no or disable Revise for this session. " *
+            "Set ENV[\"$_ALLOW_REVISE_ENV\"]=\"1\" to bypass this guard."
+        ))
+    end
+    return nothing
 end
 
 _suffix(::Type{Float64}) = "D"
@@ -121,6 +122,7 @@ function FMMVolumeContext(
     comm;
     T::Type{<:AbstractFloat}=Float64,
 )
+    _assert_revise_compatibility()
     _check_multipole_order(multipole_order)
     sym = Symbol("PVFMMCreateVolumeFMM" * _suffix(T))
     fp = Libdl.dlsym(_libpvfmm(), sym)
@@ -148,6 +150,7 @@ function FMMParticleContext(
     comm=nothing;
     T::Type{<:AbstractFloat}=Float64,
 )
+    _assert_revise_compatibility()
     _check_multipole_order(multipole_order)
     sym = comm === nothing ? Symbol("PVFMMCreateContext" * _suffix(T) * "World") : Symbol("PVFMMCreateContext" * _suffix(T))
     fp = Libdl.dlsym(_libpvfmm(), sym)
@@ -265,6 +268,7 @@ function from_function(
     periodic::Bool,
     init_depth::Integer,
 ) where {T<:AbstractFloat}
+    _assert_revise_compatibility()
     length(trg_coord) % 3 == 0 || throw(ArgumentError("Target coordinates length must be a multiple of 3"))
     n_trg = length(trg_coord) ÷ 3
     sym = Symbol("PVFMMCreateVolumeTree" * _suffix(T))
@@ -303,6 +307,7 @@ function from_coefficients(
     comm,
     periodic::Bool,
 ) where {T<:AbstractFloat}
+    _assert_revise_compatibility()
     length(leaf_coord) % 3 == 0 || throw(ArgumentError("Leaf coordinates length must be a multiple of 3"))
     N_leaf = length(leaf_coord) ÷ 3
     coeff_size = N_leaf * data_dim * (cheb_deg + 1) * (cheb_deg + 2) * (cheb_deg + 3) ÷ 6

@@ -1,10 +1,7 @@
 using Test
 using LinearAlgebra
 using Random
-
-const _PVFMM_BUILD_DIR = normpath(joinpath(@__DIR__, "..", "..", "build"))
-const _PVFMM_DYLIB = joinpath(_PVFMM_BUILD_DIR, "libpvfmm.dylib")
-ENV["PVFMM"] = _PVFMM_BUILD_DIR
+using Libdl
 
 function _aos_flat(coords::AbstractMatrix{T}) where {T}
     n = size(coords, 2)
@@ -104,7 +101,7 @@ end
 
 @testset "Reference comparisons" begin
     Random.seed!(11)
-    @test isfile(_PVFMM_DYLIB)
+    @test isfile(PVFMM._PVFMM_LIB)
 
     nsrc = 40
     ntrg = 35
